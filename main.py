@@ -1,6 +1,7 @@
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils.executor import start_webhook
 import aiocron
+import sqlite3
 import os
 
 API_TOKEN = os.getenv('BOT_TOKEN')
@@ -11,28 +12,71 @@ WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-tasks = {}
-task_counter = 1
+# Инициализация базы
+def init_db():
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_text TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
+init_db()
+
+# Добавление задачи
+def add_task(text):
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO tasks (task_text) VALUES (?)', (text,))
+    conn.commit()
+    conn.close()
+
+# Удаление задачи
+def delete_task(task_id):
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM tasks WHERE id=?', (task_id,))
+    conn.commit()
+    conn.close()
+
+# Получение всех задач
+def get_all_tasks():
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, task_text FROM tasks')
+    tasks = cursor.fetchall()
+    conn.close()
+    return tasks
+# Редактировать задачи
+def edit_task(task_id, new_text):
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
+    cursor.execute('UPDATE tasks SET task_text = ? WHERE id = ?', (new_text, task_id))
+    conn.commit()
+    conn.close()
+# Команды
 @dp.message_handler(commands=['start'])
 async def start_task(message: types.Message):
-    global task_counter
     if message.from_user.id == ADMIN_ID:
         text = message.get_args().strip()
         if text:
-            tasks[task_counter] = text
-            await message.reply(f'Задача [{task_counter}] добавлена: {text}')
-            task_counter += 1
+            add_task(text)
+            await message.reply(f'Задача добавлена: {text}')
         else:
             await message.reply('Напиши текст задачи: /start Текст задачи')
 
 @dp.message_handler(commands=['list'])
 async def list_tasks(message: types.Message):
     if message.from_user.id == ADMIN_ID:
+        tasks = get_all_tasks()
         if tasks:
             text = '‼️ Активные задачи:\n'
-            for id, task in tasks.items():
-                text += f'[{id}] {task}\n'
+            for task in tasks:
+                text += f'[{task[0]}] {task[1]}\n'
             await message.reply(text)
         else:
             await message.reply('Нет активных задач.')
@@ -41,20 +85,35 @@ async def list_tasks(message: types.Message):
 async def stop_task(message: types.Message):
     if message.from_user.id == ADMIN_ID:
         task_id = message.get_args().strip()
-        if task_id.isdigit() and int(task_id) in tasks:
-            removed = tasks.pop(int(task_id))
-            await message.reply(f'Задача [{task_id}] удалена: {removed}')
+        if task_id.isdigit():
+            delete_task(int(task_id))
+            await message.reply(f'Задача [{task_id}] удалена.')
         else:
-            await message.reply('Укажи номер задачи из списка: /stop 1')
+            await message.reply('Укажи номер задачи: /stop 1')
 
-@aiocron.crontab('0 12 * * *')  # каждый день в 12:00 UTC
+@dp.message_handler(commands=['edit'])
+async def edit_task_handler(message: types.Message):
+    if message.from_user.id == ADMIN_ID:
+        args = message.get_args().strip().split(maxsplit=1)
+        if len(args) == 2 and args[0].isdigit():
+            task_id = int(args[0])
+            new_text = args[1]
+            edit_task(task_id, new_text)
+            await message.reply(f'Задача [{task_id}] успешно изменена на:\n{new_text}')
+        else:
+            await message.reply('Используй формат: /edit ID Новый текст задачи\nНапример: /edit 2 Новый текст')
+
+# Ежедневное напоминание
+@aiocron.crontab('0 12 * * *')  # 12:00 UTC
 async def daily_reminder():
+    tasks = get_all_tasks()
     if tasks:
         text = '‼️ Напоминание по активным задачам:\n'
-        for id, task in tasks.items():
-            text += f'[{id}] {task}\n'
+        for task in tasks:
+            text += f'[{task[0]}] {task[1]}\n'
         await bot.send_message(GROUP_CHAT_ID, text)
 
+# Установка webhook
 async def on_startup(dispatcher):
     await bot.set_webhook(WEBHOOK_URL)
 
@@ -67,6 +126,5 @@ if __name__ == '__main__':
         webhook_path='',
         on_startup=on_startup,
         on_shutdown=on_shutdown,
-        skip_updates=True,
-        webhook_url=WEBHOOK_URL
+        skip_updates=True
     )
