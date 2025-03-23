@@ -61,7 +61,7 @@ async def on_startup(dispatcher):
 async def on_shutdown(dispatcher):
     await bot.delete_webhook()
 
-if name == '__main__':
+if __name__ == '__main__':
     start_webhook(
         dispatcher=dp,
         webhook_path='',
