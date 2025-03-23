@@ -12,7 +12,7 @@ WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# Инициализация базы
+# Инициализация базы данных
 def init_db():
     conn = sqlite3.connect('tasks.db')
     cursor = conn.cursor()
@@ -27,7 +27,7 @@ def init_db():
 
 init_db()
 
-# Добавление задачи
+# Работа с базой
 def add_task(text):
     conn = sqlite3.connect('tasks.db')
     cursor = conn.cursor()
@@ -35,7 +35,6 @@ def add_task(text):
     conn.commit()
     conn.close()
 
-# Удаление задачи
 def delete_task(task_id):
     conn = sqlite3.connect('tasks.db')
     cursor = conn.cursor()
@@ -43,7 +42,6 @@ def delete_task(task_id):
     conn.commit()
     conn.close()
 
-# Получение всех задач
 def get_all_tasks():
     conn = sqlite3.connect('tasks.db')
     cursor = conn.cursor()
@@ -51,14 +49,15 @@ def get_all_tasks():
     tasks = cursor.fetchall()
     conn.close()
     return tasks
-# Редактировать задачи
+
 def edit_task(task_id, new_text):
     conn = sqlite3.connect('tasks.db')
     cursor = conn.cursor()
     cursor.execute('UPDATE tasks SET task_text = ? WHERE id = ?', (new_text, task_id))
     conn.commit()
     conn.close()
-# Команды
+
+# Хендлеры команд
 @dp.message_handler(commands=['start'])
 async def start_task(message: types.Message):
     if message.from_user.id == ADMIN_ID:
@@ -99,12 +98,12 @@ async def edit_task_handler(message: types.Message):
             task_id = int(args[0])
             new_text = args[1]
             edit_task(task_id, new_text)
-            await message.reply(f'Задача [{task_id}] успешно изменена на:\n{new_text}')
+            await message.reply(f'Задача [{task_id}] изменена на:\n{new_text}')
         else:
-            await message.reply('Используй формат: /edit ID Новый текст задачи\nНапример: /edit 2 Новый текст')
+            await message.reply('Формат: /edit ID Новый текст\nНапример: /edit 2 Новый текст задачи')
 
-# Ежедневное напоминание
-@aiocron.crontab('0 12 * * *')  # 12:00 UTC
+# Автоматическое напоминание каждый день
+@aiocron.crontab('0 12 * * *')  # каждый день в 12:00 UTC
 async def daily_reminder():
     tasks = get_all_tasks()
     if tasks:
@@ -113,8 +112,11 @@ async def daily_reminder():
             text += f'[{task[0]}] {task[1]}\n'
         await bot.send_message(GROUP_CHAT_ID, text)
 
-# Установка webhook
+# Webhook
 async def on_startup(dispatcher):
+    if not WEBHOOK_URL:
+        raise Exception("WEBHOOK_URL is not set!")
+    print(f'Webhook URL: {WEBHOOK_URL}')
     await bot.set_webhook(WEBHOOK_URL)
 
 async def on_shutdown(dispatcher):
