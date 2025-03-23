@@ -1,11 +1,12 @@
 from aiogram import Bot, Dispatcher, types
-from aiogram.utils import executor
+from aiogram.utils.executor import start_webhook
 import aiocron
 import os
 
 API_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID'))
 GROUP_CHAT_ID = int(os.getenv('CHAT_ID'))
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
@@ -54,5 +55,18 @@ async def daily_reminder():
             text += f'[{id}] {task}\n'
         await bot.send_message(GROUP_CHAT_ID, text)
 
-if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+async def on_startup(dispatcher):
+    await bot.set_webhook(WEBHOOK_URL)
+
+async def on_shutdown(dispatcher):
+    await bot.delete_webhook()
+
+if name == '__main__':
+    start_webhook(
+        dispatcher=dp,
+        webhook_path='',
+        on_startup=on_startup,
+        on_shutdown=on_shutdown,
+        skip_updates=True,
+        webhook_url=WEBHOOK_URL
+    )
